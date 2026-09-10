@@ -5,7 +5,7 @@ import requests
 from datetime import datetime
 
 # 填入你專屬的 Discord Webhook 網址
-DISCORD_WEBHOOK_URL = "你的Discord網址貼在這裡"
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1547538132822401126/tQWRp96vQ1_7LJu-HWYNcSfb9XO84z_Faa0jM4Mum_wCwew2nrtv-X1ZhDi0z1e-6r65"
 
 my_portfolio = ["0050.TW", "2327.TW", "3532.TW", "5347.TWO", "8299.TWO"]
 
