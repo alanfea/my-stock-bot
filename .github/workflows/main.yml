@@ -1,5 +1,4 @@
-name: 每日台股即時監控排程
-
+name: taiwan stock
 on:
   schedule:
     # 📝 數學系思維注意：GitHub 的排程時間是國際標準時 (UTC)。
