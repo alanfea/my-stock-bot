@@ -1,4 +1,5 @@
-yamlname: 每日台股即時監控排程
+yaml
+name : 每日台股即時監控排程
 
 on:
   schedule:
