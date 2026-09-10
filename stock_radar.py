@@ -2,14 +2,14 @@ import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # 填入你專屬的 Discord Webhook 網址
 DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1547538132822401126/tQWRp96vQ1_7LJu-HWYNcSfb9XO84z_Faa0jM4Mum_wCwew2nrtv-X1ZhDi0z1e-6r65"
 
 my_portfolio = ["0050.TW", "2327.TW", "3532.TW", "5347.TWO", "8299.TWO"]
-
-discord_message = f"📊 **【AI 持股即時驗證雷達】** 執行時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+taipei_time = datetime.now() + timedelta(hours=8)
+discord_message = f"📊 **【AI 持股即時驗證雷達】** 執行時間: {taipei_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
 discord_message += "--------------------------------------------------------\n"
 
 for ticker in my_portfolio:
