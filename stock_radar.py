@@ -1,3 +1,4 @@
+import os
 import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
@@ -10,73 +11,103 @@ from zoneinfo import ZoneInfo
 # =========================================================
 # 1. Discord Webhook
 # =========================================================
-# ⚠️ 請把這裡換成「重新產生的新 Webhook」
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1547996479287984218/VSA3tm2_e1C7BErWp4Gs-aPmFsChNo9wxgV6cjjOO8iIuNi-DejBsSHX8fAkc6Gf0WAU"
+# GitHub Actions 建議使用 Secrets
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+
+if not DISCORD_WEBHOOK_URL:
+    raise ValueError("找不到 DISCORD_WEBHOOK_URL")
 
 
 # =========================================================
-# 2. 我的持股
+# 2. 股票清單
 # =========================================================
-my_portfolio = [
-    "0050.TW",   # 元大台灣50
-    "2327.TW",   # 國巨
-    "3532.TW",   # 台勝科
-    "5347.TWO",  # 世界先進（上櫃）
-    "8299.TWO"   # 群聯（上櫃）
+PORTFOLIO = [
+    "0050.TW",    # 元大台灣50
+    "2327.TW",    # 國巨
+    "3532.TW",    # 台勝科
+    "5347.TWO",   # 世界先進
+    "8299.TWO"    # 群聯
 ]
 
 
 # =========================================================
-# 3. 取得台北時間
+# 3. 台北時間
 # =========================================================
-taipei_time = datetime.now(ZoneInfo("Asia/Taipei"))
+taipei_time = datetime.now(
+    ZoneInfo("Asia/Taipei")
+)
 
 print("=" * 60)
 print("📊 AI 持股技術面雷達")
-print("執行時間：", taipei_time.strftime("%Y-%m-%d %H:%M:%S"))
+print(
+    "執行時間：",
+    taipei_time.strftime("%Y-%m-%d %H:%M:%S")
+)
 print("=" * 60)
 
 
 # =========================================================
-# 4. Discord 訊息開頭
+# 4. 一次下載全部股票
+# =========================================================
+print("📡 正在批次取得 Yahoo Finance 資料...")
+
+try:
+
+    data = yf.download(
+        tickers=PORTFOLIO,
+        period="60d",
+        interval="1d",
+        auto_adjust=False,
+        group_by="ticker",
+        threads=True,
+        progress=False
+    )
+
+except Exception as e:
+
+    raise RuntimeError(
+        f"Yahoo Finance 資料下載失敗：{e}"
+    )
+
+
+if data.empty:
+    raise RuntimeError("Yahoo Finance 沒有回傳資料")
+
+
+print("✅ Yahoo Finance 資料取得完成")
+
+
+# =========================================================
+# 5. 建立 Discord 訊息
 # =========================================================
 discord_message = (
     "📊 **【AI 持股技術面雷達】**\n"
-    f"🕐 執行時間：{taipei_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+    f"🕐 執行時間："
+    f"{taipei_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
     "────────────────────────────\n\n"
 )
 
 
 # =========================================================
-# 5. 開始分析每一檔股票
+# 6. 分析每一檔股票
 # =========================================================
-for ticker in my_portfolio:
+for ticker in PORTFOLIO:
 
-    print(f"正在分析 {ticker}...")
+    print(f"🔍 分析 {ticker}...")
 
     try:
 
         # -------------------------------------------------
-        # 下載過去 60 天日 K
+        # 取得單一股票資料
         # -------------------------------------------------
-        df = yf.download(
-            ticker,
-            period="60d",
-            interval="1d",
-            auto_adjust=False,
-            progress=False
+        df = data[ticker].copy()
+
+        df = df.dropna(
+            subset=["Close"]
         )
 
         if df.empty:
-            print(f"⚠️ {ticker} 沒有取得資料")
-            continue
-
-
-        # -------------------------------------------------
-        # 處理 yfinance MultiIndex
-        # -------------------------------------------------
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+            raise ValueError("沒有有效資料")
 
 
         # -------------------------------------------------
@@ -89,17 +120,17 @@ for ticker in my_portfolio:
 
 
         # -------------------------------------------------
-        # 布林通道 (20, 2)
+        # Bollinger Bands (20, 2)
         # -------------------------------------------------
-        bbands = ta.bbands(
+        bb = ta.bbands(
             df["Close"],
             length=20,
             std=2
         )
 
-        df["BB_lower"] = bbands.iloc[:, 0]
-        df["BB_middle"] = bbands.iloc[:, 1]
-        df["BB_upper"] = bbands.iloc[:, 2]
+        df["BB_lower"] = bb.iloc[:, 0]
+        df["BB_middle"] = bb.iloc[:, 1]
+        df["BB_upper"] = bb.iloc[:, 2]
 
 
         # -------------------------------------------------
@@ -112,66 +143,60 @@ for ticker in my_portfolio:
 
 
         # -------------------------------------------------
-        # 取得最新一筆資料
+        # 最新資料
         # -------------------------------------------------
         latest = df.iloc[-1]
 
-        current_price = float(latest["Close"])
-        rsi_value = float(latest["RSI"])
-        bb_lower = float(latest["BB_lower"])
-        bb_upper = float(latest["BB_upper"])
-        ma20 = float(latest["MA20"])
+        current_price = float(
+            latest["Close"]
+        )
 
+        rsi_value = float(
+            latest["RSI"]
+        )
 
-        # -------------------------------------------------
-        # 嘗試取得目前價格
-        # -------------------------------------------------
-        try:
+        bb_lower = float(
+            latest["BB_lower"]
+        )
 
-            stock = yf.Ticker(ticker)
+        bb_upper = float(
+            latest["BB_upper"]
+        )
 
-            live_price = stock.fast_info.get("last_price")
-
-            if live_price is not None:
-                current_price = float(live_price)
-
-        except Exception:
-
-            print(f"⚠️ {ticker} 無法取得目前價格，使用最近收盤價")
-
-
-        # =================================================
-        # 6. 訊號判斷
-        # =================================================
-
-        status = "🟢 正常波動中"
-
-        if current_price < bb_lower and rsi_value < 35:
-
-            status = "🚨 **市場超跌｜注意加碼機會**"
-
-        elif current_price > bb_upper and rsi_value > 75:
-
-            status = "💰 **波段過熱｜注意獲利了結**"
-
-
-        # =================================================
-        # 7. 終端機顯示
-        # =================================================
-
-        print(
-            f"{ticker} | "
-            f"價格：{current_price:.2f} | "
-            f"RSI：{rsi_value:.1f} | "
-            f"MA20：{ma20:.2f} | "
-            f"{status}"
+        ma20 = float(
+            latest["MA20"]
         )
 
 
-        # =================================================
-        # 8. 組合 Discord 訊息
-        # =================================================
+        # -------------------------------------------------
+        # 訊號判斷
+        # -------------------------------------------------
+        status = "🟢 正常波動中"
 
+        if (
+            current_price < bb_lower
+            and rsi_value < 35
+        ):
+
+            status = (
+                "🚨 **市場超跌｜"
+                "注意加碼機會**"
+            )
+
+        elif (
+            current_price > bb_upper
+            and rsi_value > 75
+        ):
+
+            status = (
+                "💰 **波段過熱｜"
+                "注意獲利了結**"
+            )
+
+
+        # -------------------------------------------------
+        # Discord 訊息
+        # -------------------------------------------------
         discord_message += (
             f"**`{ticker}`**\n"
             f"💰 目前價格：**{current_price:.2f}**\n"
@@ -184,50 +209,60 @@ for ticker in my_portfolio:
         )
 
 
+        print(
+            f"   價格 {current_price:.2f} | "
+            f"RSI {rsi_value:.1f} | "
+            f"{status}"
+        )
+
+
     except Exception as e:
 
-        print(f"❌ {ticker} 分析失敗：{e}")
+        print(
+            f"❌ {ticker} 分析失敗：{e}"
+        )
 
         discord_message += (
-            f"⚠️ **`{ticker}` 資料取得失敗**\n"
+            f"⚠️ **`{ticker}` 分析失敗**\n"
             f"錯誤：{e}\n\n"
         )
 
 
 # =========================================================
-# 9. 發送 Discord
+# 7. 一次發送 Discord
 # =========================================================
+print("📤 正在發送 Discord...")
 
 try:
 
-    payload = {
-        "content": discord_message
-    }
-
     response = requests.post(
         DISCORD_WEBHOOK_URL,
-        json=payload,
+        json={
+            "content": discord_message
+        },
         timeout=10
     )
 
-
     if response.status_code == 204:
 
-        print("\n✅ Discord 發送成功！")
+        print("✅ Discord 發送成功！")
 
     else:
 
         print(
-            f"\n❌ Discord 發送失敗！"
-            f"HTTP 狀態碼：{response.status_code}"
+            f"❌ Discord 發送失敗："
+            f"{response.status_code}"
         )
 
         print(response.text)
 
+except requests.RequestException as e:
 
-except Exception as e:
+    print(
+        f"❌ Discord 網路連線失敗：{e}"
+    )
 
-    print(f"\n❌ Discord 連線失敗：{e}")
 
-
-print("\n程式執行完畢。")
+print("=" * 60)
+print("🏁 程式執行完成")
+print("=" * 60)
