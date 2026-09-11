@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 # 1. Discord Webhook
 # =========================================================
 # GitHub Actions 建議使用 Secrets
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+DISCORD_WEBHOOK_URL = os.getenv("https://discord.com/api/webhooks/1547996479287984218/VSA3tm2_e1C7BErWp4Gs-aPmFsChNo9wxgV6cjjOO8iIuNi-DejBsSHX8fAkc6Gf0WAU")
 
 if not DISCORD_WEBHOOK_URL:
     raise ValueError("找不到 DISCORD_WEBHOOK_URL")
