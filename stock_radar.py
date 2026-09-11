@@ -2,55 +2,232 @@ import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import requests
-from datetime import datetime, timedelta
 
-# 填入你專屬的 Discord Webhook 網址
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1547538132822401126/tQWRp96vQ1_7LJu-HWYNcSfb9XO84z_Faa0jM4Mum_wCwew2nrtv-X1ZhDi0z1e-6r65"
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-my_portfolio = ["0050.TW", "2327.TW", "3532.TW", "5347.TWO", "8299.TWO"]
-taipei_time = datetime.now() + timedelta(hours=8)
-discord_message = f"📊 **【AI 持股即時驗證雷達】** 執行時間: {taipei_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-discord_message += "--------------------------------------------------------\n"
 
+# =========================================================
+# 1. Discord Webhook
+# =========================================================
+# ⚠️ 請把這裡換成「重新產生的新 Webhook」
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1547996479287984218/VSA3tm2_e1C7BErWp4Gs-aPmFsChNo9wxgV6cjjOO8iIuNi-DejBsSHX8fAkc6Gf0WAU"
+
+
+# =========================================================
+# 2. 我的持股
+# =========================================================
+my_portfolio = [
+    "0050.TW",   # 元大台灣50
+    "2327.TW",   # 國巨
+    "3532.TW",   # 台勝科
+    "5347.TWO",  # 世界先進（上櫃）
+    "8299.TWO"   # 群聯（上櫃）
+]
+
+
+# =========================================================
+# 3. 取得台北時間
+# =========================================================
+taipei_time = datetime.now(ZoneInfo("Asia/Taipei"))
+
+print("=" * 60)
+print("📊 AI 持股技術面雷達")
+print("執行時間：", taipei_time.strftime("%Y-%m-%d %H:%M:%S"))
+print("=" * 60)
+
+
+# =========================================================
+# 4. Discord 訊息開頭
+# =========================================================
+discord_message = (
+    "📊 **【AI 持股技術面雷達】**\n"
+    f"🕐 執行時間：{taipei_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+    "────────────────────────────\n\n"
+)
+
+
+# =========================================================
+# 5. 開始分析每一檔股票
+# =========================================================
 for ticker in my_portfolio:
-    df = yf.download(ticker, period="60d", progress=False)
-    if df.empty: 
-        continue
-        
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    
-    try:
-        t_obj = yf.Ticker(ticker)
-        live_price = t_obj.fast_info['last_price']
-        today_str = datetime.now().strftime('%Y-%m-%d')
-        df.loc[pd.to_datetime(today_str)] = [live_price, live_price, live_price, live_price, live_price, 0]
-    except Exception:
-        pass
 
-    df['RSI'] = ta.rsi(df['Close'], length=14)
-    bbands = ta.bbands(df['Close'], length=20, std=2)
-    
-    df['BB_lower'] = bbands.iloc[:, 0]
-    df['BB_upper'] = bbands.iloc[:, 2]
-    
-    latest_data = df.iloc[-1]
-    current_price = float(latest_data['Close'])
-    rsi_val = float(latest_data['RSI'])
-    bb_low = float(latest_data['BB_lower'])
-    bb_up = float(latest_data['BB_upper'])
-    
-    status = "正常波動中"
-    if current_price < bb_low and rsi_val < 35:
-        status = "🚨 **【市場超跌】即時觸發加碼訊號！**"
-    elif current_price > bb_up and rsi_val > 75:
-        status = "💰 **【波段過熱】即時觸發獲利了結！**"
-        
-    line_text = f"`{ticker:8}` | 即時價: **{current_price:7.2f}** | RSI: {rsi_val:5.1f} | 狀態: {status}\n"
-    discord_message += line_text
+    print(f"正在分析 {ticker}...")
+
+    try:
+
+        # -------------------------------------------------
+        # 下載過去 60 天日 K
+        # -------------------------------------------------
+        df = yf.download(
+            ticker,
+            period="60d",
+            interval="1d",
+            auto_adjust=False,
+            progress=False
+        )
+
+        if df.empty:
+            print(f"⚠️ {ticker} 沒有取得資料")
+            continue
+
+
+        # -------------------------------------------------
+        # 處理 yfinance MultiIndex
+        # -------------------------------------------------
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+
+        # -------------------------------------------------
+        # RSI(14)
+        # -------------------------------------------------
+        df["RSI"] = ta.rsi(
+            df["Close"],
+            length=14
+        )
+
+
+        # -------------------------------------------------
+        # 布林通道 (20, 2)
+        # -------------------------------------------------
+        bbands = ta.bbands(
+            df["Close"],
+            length=20,
+            std=2
+        )
+
+        df["BB_lower"] = bbands.iloc[:, 0]
+        df["BB_middle"] = bbands.iloc[:, 1]
+        df["BB_upper"] = bbands.iloc[:, 2]
+
+
+        # -------------------------------------------------
+        # MA20
+        # -------------------------------------------------
+        df["MA20"] = ta.sma(
+            df["Close"],
+            length=20
+        )
+
+
+        # -------------------------------------------------
+        # 取得最新一筆資料
+        # -------------------------------------------------
+        latest = df.iloc[-1]
+
+        current_price = float(latest["Close"])
+        rsi_value = float(latest["RSI"])
+        bb_lower = float(latest["BB_lower"])
+        bb_upper = float(latest["BB_upper"])
+        ma20 = float(latest["MA20"])
+
+
+        # -------------------------------------------------
+        # 嘗試取得目前價格
+        # -------------------------------------------------
+        try:
+
+            stock = yf.Ticker(ticker)
+
+            live_price = stock.fast_info.get("last_price")
+
+            if live_price is not None:
+                current_price = float(live_price)
+
+        except Exception:
+
+            print(f"⚠️ {ticker} 無法取得目前價格，使用最近收盤價")
+
+
+        # =================================================
+        # 6. 訊號判斷
+        # =================================================
+
+        status = "🟢 正常波動中"
+
+        if current_price < bb_lower and rsi_value < 35:
+
+            status = "🚨 **市場超跌｜注意加碼機會**"
+
+        elif current_price > bb_upper and rsi_value > 75:
+
+            status = "💰 **波段過熱｜注意獲利了結**"
+
+
+        # =================================================
+        # 7. 終端機顯示
+        # =================================================
+
+        print(
+            f"{ticker} | "
+            f"價格：{current_price:.2f} | "
+            f"RSI：{rsi_value:.1f} | "
+            f"MA20：{ma20:.2f} | "
+            f"{status}"
+        )
+
+
+        # =================================================
+        # 8. 組合 Discord 訊息
+        # =================================================
+
+        discord_message += (
+            f"**`{ticker}`**\n"
+            f"💰 目前價格：**{current_price:.2f}**\n"
+            f"📈 RSI(14)：**{rsi_value:.1f}**\n"
+            f"📊 MA20：**{ma20:.2f}**\n"
+            f"🔽 布林下軌：{bb_lower:.2f}\n"
+            f"🔼 布林上軌：{bb_upper:.2f}\n"
+            f"📌 狀態：{status}\n"
+            "────────────────────────────\n\n"
+        )
+
+
+    except Exception as e:
+
+        print(f"❌ {ticker} 分析失敗：{e}")
+
+        discord_message += (
+            f"⚠️ **`{ticker}` 資料取得失敗**\n"
+            f"錯誤：{e}\n\n"
+        )
+
+
+# =========================================================
+# 9. 發送 Discord
+# =========================================================
 
 try:
-    payload = {"content": discord_message}
-    requests.post(DISCORD_WEBHOOK_URL, json=payload)
+
+    payload = {
+        "content": discord_message
+    }
+
+    response = requests.post(
+        DISCORD_WEBHOOK_URL,
+        json=payload,
+        timeout=10
+    )
+
+
+    if response.status_code == 204:
+
+        print("\n✅ Discord 發送成功！")
+
+    else:
+
+        print(
+            f"\n❌ Discord 發送失敗！"
+            f"HTTP 狀態碼：{response.status_code}"
+        )
+
+        print(response.text)
+
+
 except Exception as e:
-    print(f"發送失敗: {e}")
+
+    print(f"\n❌ Discord 連線失敗：{e}")
+
+
+print("\n程式執行完畢。")
