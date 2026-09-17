@@ -28,5 +28,6 @@ jobs:
       - name: 執行即時驗證雷達
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TZ: Asia/Taipei
         run: |
           python stock_radar.py
