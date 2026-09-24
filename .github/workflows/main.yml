@@ -6,7 +6,7 @@ on:
     # GitHub Actions 使用 UTC
     # 台北 UTC+8
     # 10:30 - 8 小時 = 02:30 UTC
-    - cron: "30 2 * * 1-5"
+    - cron: "18 2 * * 1-5"
 
   # 可以在 GitHub Actions 手動測試
   workflow_dispatch:
